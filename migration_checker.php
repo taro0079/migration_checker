@@ -1,10 +1,19 @@
 <?php
+
 class EntityParser
 {
     public const filepath = 'test.php';
+    private string $name_pattern = '/name: \'(.*?)\'/';
+    private string $column_pattern = '/#\[ORM.*(?:Column|JoinColumn)(.*)/';
 
-    public function getTableName() {
-        $pattern = '/#\[ORM\\\\Table\(name:\s\'(.*?)\',/';
+    private string $attribute_pattern = '/#\[ORM.*(?:Column|JoinColumn|OneToMany|OneToOne|ManyToOne).*/';
+    private string $table_pattern = '/#\[ORM\\\\Table\(name:\s\'(.*?)\',/';
+
+    private string $relation_pattern = '/#\[ORM\\\\(?:OneToMany|ManyToOne|OneToOne|JoinColumn).*/';
+
+    public function getTableName()
+    {
+        $pattern = $this->table_pattern;
         $file = new SplFileObject(self::filepath);
 
         while (!$file->eof()) {
@@ -16,9 +25,10 @@ class EntityParser
         }
         return $matches;
     }
-    public function getAttribute() {
+    public function getAttribute()
+    {
         $file_path = self::filepath;
-        $pattern = '/#\[ORM.*(?:Column|JoinColumn)(.*)/';
+        $pattern = $this->attribute_pattern;
         $file = new SplFileObject($file_path);
         $matches = [];
 
@@ -60,7 +70,11 @@ class EntityParser
 
     private function getType($attribute_text)
     {
-        $pattern = '/type:\s(.*?),/';
+        preg_match($this->relation_pattern, $attribute_text, $relation_match);
+        if (null!==$relation_match[0]) { return 'relation'; }
+
+
+        $pattern = '/type:\s(.*?)[,|\)]/';
         preg_match($pattern, $attribute_text, $matches);
         $row_type = $matches[1];
         return $this->typeMap($row_type);
@@ -70,10 +84,12 @@ class EntityParser
     public function getColumnName($set)
     {
         $attrubites = $set['attrs'];
-        $column_name_pattern = '/name: \'(.*?)\'/';
+        $column_name_pattern = $this->name_pattern;
         foreach ($attrubites as $attrubite) {
             preg_match($column_name_pattern, $attrubite['match'], $matches);
-            if (!isset($matches[1])) { continue; }
+            if (!isset($matches[1])) {
+                continue;
+            }
             return $matches[1];
         }
         $property = $set['prop'];
@@ -83,8 +99,18 @@ class EntityParser
 
     public function getDbColumn()
     {
-        $attributes = $this->createSets()['attrs'];
-        $type = array_map(fn($element)=>$this->getType($element['match']), $attributes);
+        $sets = $this->createComplete();
+        $result=[];
+        foreach ($sets as $set) {
+            $attributes = $set['attrs'];
+            $types = array_map(fn ($element) =>$this->getType($element['match']), $attributes);
+            $column_name = $this->getColumnName($set);
+            $type = count($types) === 0 ? null : $types[0];
+            $result[] = new DbColumnDto(field: $column_name, type: $type);
+        }
+
+
+        return $result;
 
     }
 
@@ -100,17 +126,20 @@ class EntityParser
     {
         return match ($row_type) {
             'Types::BIGINT' => 'bigint',
+            'Types::STRING' => 'varchar',
+            'Types::INTEGER' => 'int',
+            'Types::BOOLEAN' => 'bool',
 
         };
     }
 
-    private function createSets()
+    public function createSets()
     {
         $set =[];
         $a = $this->getAttribute();
         $p = $this->getProperties();
-        foreach ($a as $aa){
-            $larger = array_filter($p, fn($element)=>$element['line'] > $aa['line']);
+        foreach ($a as $aa) {
+            $larger = array_filter($p, fn ($element) =>$element['line'] > $aa['line']);
             $acm = 100000;
             $target = null;
             foreach ($larger as $l) {
@@ -136,12 +165,11 @@ class EntityParser
             $temp[$s['property']['property']] = $s['property']['property'];
         }
         $complete = [];
-        foreach($temp as $t =>$tv){
+        foreach($temp as $t =>$tv) {
             $attr = [];
 
             foreach($this->createSets() as $s) {
-                if ($s['property']['property'] == $tv)
-                {
+                if ($s['property']['property'] == $tv) {
                     $attr[] = $s['attribute'];
                     $ppp = $s['property'];
                 }
@@ -219,6 +247,20 @@ class DbConnector
 
 }
 
+class DbColumnDto
+{
+    public function __construct(
+        public ?string $field = null,
+        public ?string $type = null,
+        public ?bool $nullable = null,
+        public ?string $key = null,
+        public ?string $default = null,
+    ) {
+
+    }
+
+}
+
 class Shougo
 {
     private DbConnector $dbConnector;
@@ -227,8 +269,7 @@ class Shougo
     public function __construct(
         DbConnector $dbConnector,
         EntityParser $parser
-    )
-    {
+    ) {
         $this->dbConnector = $dbConnector;
         $this->parser = $parser;
     }
@@ -238,7 +279,7 @@ class Shougo
         $names_from_entity = $this->parser->getColumnNames();
         $names_from_db = $this->dbConnector->getColumnName($this->parser->getTableName());
         $row_diff = array_diff($names_from_db, $names_from_entity);
-        $default_column_names = array_map(fn($e)=>$e['field'], $this->parser->getDefaultColumn());
+        $default_column_names = array_map(fn ($e) =>$e['field'], $this->parser->getDefaultColumn());
         return array_diff($row_diff, $default_column_names);
 
 
@@ -248,13 +289,10 @@ class Shougo
 
 
 $c = new EntityParser();
-$db_connector = new DbConnector();
-$shougo = new Shougo($db_connector, $c);
-$res = $shougo->getDiffForColumnName();
-//$result = $c->createComplete();
-
-
-//$connector = new DbConnector();
-//$res = $connector->getDesc('trn_shipping');
-
-var_dump($res);
+$result = $c->getDbColumn();
+var_dump($result);
+// $db_connector = new DbConnector();
+// $shougo = new Shougo($db_connector, $c);
+// $res = $shougo->getDiffForColumnName();
+//
+// var_dump($res);
