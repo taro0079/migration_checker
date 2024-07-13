@@ -99,7 +99,7 @@ class EntityParser
 
     public function getDbColumn()
     {
-        $sets = $this->createComplete();
+        $sets = $this->formattedCompleteSet();
         $result=[];
         foreach ($sets as $set) {
             $attributes = $set['attrs'];
@@ -183,6 +183,24 @@ class EntityParser
 
         }
         return $complete;
+    }
+
+    private function formattedCompleteSet()
+    {
+        $sets = $this->createComplete();
+        $result = [];
+        foreach($sets as $set) {
+            $attributes = $set['attrs'];
+            foreach ($attributes as $attribute) {
+                preg_match($this->column_pattern, $attribute['match'], $match);
+                if (null!==$match[0]) { 
+                    $result[] = $set;
+                    continue;
+                }
+            }
+        }
+
+        return $result;
     }
 
     public function getColumnNames()
