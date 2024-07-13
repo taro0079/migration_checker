@@ -11,6 +11,10 @@ class EntityParser
 
     private string $relation_pattern = '/#\[ORM\\\\(?:OneToMany|ManyToOne|OneToOne|JoinColumn).*/';
 
+    private string $nullable_pattern = '/nullable:\s(.*?)[,|\)]/';
+
+    private string $length_pattern = '/length:\s(.*?)[,|\)]/';
+
     public function getTableName()
     {
         $pattern = $this->table_pattern;
@@ -81,6 +85,20 @@ class EntityParser
 
     }
 
+    private function getNullable(string $attributre_text): ?string
+    {
+        preg_match($this->nullable_pattern, $attributre_text, $matched);
+        if (null===$matched) { return null; }
+
+        return  $matched[1];
+
+    }
+
+    private function getLength(string $attribute_text)
+    {
+    
+    }
+
     public function getColumnName($set)
     {
         $attrubites = $set['attrs'];
@@ -104,9 +122,11 @@ class EntityParser
         foreach ($sets as $set) {
             $attributes = $set['attrs'];
             $types = array_map(fn ($element) =>$this->getType($element['match']), $attributes);
-            $column_name = $this->getColumnName($set);
             $type = count($types) === 0 ? null : $types[0];
-            $result[] = new DbColumnDto(field: $column_name, type: $type);
+            $nullables = array_map(fn($element)=>$this->getNullable($element['match']), $attributes);
+            $nullable = count($nullables) === 0 ? null : $nullables[0];
+            $column_name = $this->getColumnName($set);
+            $result[] = new DbColumnDto(field: $column_name, type: $type, nullable:$nullable);
         }
 
 
@@ -217,12 +237,8 @@ class EntityParser
     public function getDefaultColumn()
     {
         return [
-            [
-                'field' => 'created_at',
-            ],
-            [
-                'field' => 'updated_at',
-            ]
+            new DbColumnDto(field: 'created_at', type: 'datetime', nullable: false, key: null, default: null),
+            new DbColumnDto(field: 'updated_at', type: 'datetime', nullable: false, key: null, default: null)
         ];
     }
 }
@@ -243,13 +259,13 @@ class DbConnector
         $result = $this->mysqli->query($query)->fetch_all();
         $typed = [];
         foreach ($result as $row) {
-            $typed[] = [
-                'field' => $row[0],
-                'type' => $row[1],
-                'nullable' => $row[2] === "YES",
-                'key' => $row[3],
-                'default' => $row[4] === "NULL" ? null : $row[4],
-            ];
+            $typed[] = new DbColumnDto(
+                field: $row[0],
+                type: $row[1],
+                nullable: $row[2] === "YES",
+                key: $row[3],
+                default: $row[4] === "NULL" ? null : $row[4]
+            );
         }
         return $typed;
     }
@@ -270,7 +286,7 @@ class DbColumnDto
     public function __construct(
         public ?string $field = null,
         public ?string $type = null,
-        public ?bool $nullable = null,
+        public ?string $nullable = null,
         public ?string $key = null,
         public ?string $default = null,
     ) {
@@ -290,17 +306,6 @@ class Shougo
     ) {
         $this->dbConnector = $dbConnector;
         $this->parser = $parser;
-    }
-
-    public function getDiffForColumnName()
-    {
-        $names_from_entity = $this->parser->getColumnNames();
-        $names_from_db = $this->dbConnector->getColumnName($this->parser->getTableName());
-        $row_diff = array_diff($names_from_db, $names_from_entity);
-        $default_column_names = array_map(fn ($e) =>$e['field'], $this->parser->getDefaultColumn());
-        return array_diff($row_diff, $default_column_names);
-
-
     }
 
 }
