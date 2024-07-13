@@ -17,26 +17,26 @@ class EntityParser
 
     private string $length_pattern = '/length:\s(.*?)[,|\)]/';
 
-    //    public function __construct(
-    //         string $file_path,
-    //    )
-    //    {
-    //        if (!file_exists($file_path)) {
-    //            throw new Exception("File not found: $file_path");
-    //        }
-    //        $this->file = new SplFileObject($file_path);
-    //
-    //    }
+    private array $file_lines;
+
+    public function __construct(
+        string $file_path,
+    ) {
+        if (!file_exists($file_path)) {
+            throw new Exception('file not found');
+        }
+
+        $this->file_lines = file($this->file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+
+    }
 
 
     public function getTableName(): string
     {
         $pattern = $this->table_pattern;
-        $file = new SplFileObject($this->file_path);
 
-        while (!$file->eof()) {
-            $line = $file->fgets();
-
+        foreach ($this->file_lines as $line) {
             if (preg_match($pattern, $line, $m)) {
                 $matches = $m[1];
             }
@@ -50,12 +50,9 @@ class EntityParser
     public function getAttribute(): array
     {
         $pattern = $this->attribute_pattern;
-        $file = new SplFileObject($this->file_path);
         $matches = [];
 
-        while (!$file->eof()) {
-            $line = $file->fgets();
-            $line_number = $file->key() + 1;
+        foreach ($this->file_lines as $line_number => $line) {
 
             if (preg_match($pattern, $line, $m)) {
                 $matches[] = [
@@ -73,12 +70,9 @@ class EntityParser
     public function getProperties(): array
     {
         $pattern = '/private.*\$(.*)[,|;]/';
-        $file = new SplFileObject($this->file_path);
         $matches = [];
 
-        while (!$file->eof()) {
-            $line = $file->fgets();
-            $line_number = $file->key() + 1;
+        foreach ($this->file_lines as $line_number => $line) {
 
             if (preg_match($pattern, $line, $m)) {
                 $matches[] = [
@@ -170,8 +164,13 @@ class EntityParser
         }
 
 
-        return $result;
+        return $this->addDefaultColumn($result);
+    }
 
+    private function addDefaultColumn(array $columns): array
+    {
+        $default_columns = $this->getDefaultColumn();
+        return array_merge($columns, $default_columns);
     }
 
     private function camelToSnakeCase($string): string
@@ -189,7 +188,6 @@ class EntityParser
             'Types::STRING' => DbType::VARCHAR,
             'Types::INTEGER' => DbType::INT,
             'Types::BOOLEAN' => DbType::TINY_INT,
-
         };
     }
 
@@ -399,7 +397,7 @@ class DbColumnDto
 class Shougo
 {
     private DbConnector $dbConnector;
-    
+
     private EntityParser $parser;
 
     public function __construct(
@@ -412,7 +410,7 @@ class Shougo
 
 }
 
-
-$c = new EntityParser('../test.php');
-$result = $c->getDbColumn();
-var_dump($result);
+//
+//$c = new EntityParser('../test.php');
+//$result = $c->getDbColumn();
+//var_dump($result);
