@@ -1,8 +1,9 @@
 <?php
 
+require '../vendor/autoload.php';
 class EntityParser
 {
-    public const filepath = 'test.php';
+    private $file;
     private string $name_pattern = '/name: \'(.*?)\'/';
     private string $column_pattern = '/#\[ORM.*(?:Column|JoinColumn)(.*)/';
 
@@ -15,13 +16,21 @@ class EntityParser
 
     private string $length_pattern = '/length:\s(.*?)[,|\)]/';
 
-    public function getTableName()
+    public function __construct(
+         string $file_path,
+    )
+    {
+        $this->file = new SplFileObject($file_path);
+
+    }
+
+
+    public function getTableName():string
     {
         $pattern = $this->table_pattern;
-        $file = new SplFileObject(self::filepath);
 
-        while (!$file->eof()) {
-            $line = $file->fgets();
+        while (!$this->file->eof()) {
+            $line = $this->file->fgets();
 
             if (preg_match($pattern, $line, $m)) {
                 $matches =  $m[1];
@@ -29,16 +38,17 @@ class EntityParser
         }
         return $matches;
     }
-    public function getAttribute()
+    /*
+     * @return array{line: int, match: string}[]
+     */
+    public function getAttribute():array
     {
-        $file_path = self::filepath;
         $pattern = $this->attribute_pattern;
-        $file = new SplFileObject($file_path);
         $matches = [];
 
-        while (!$file->eof()) {
-            $line = $file->fgets();
-            $line_number = $file->key() + 1;
+        while (!$this->file->eof()) {
+            $line = $this->file->fgets();
+            $line_number = $this->file->key() + 1;
 
             if (preg_match($pattern, $line, $m)) {
                 $matches[] = [
@@ -50,16 +60,17 @@ class EntityParser
         return $matches;
     }
 
-    public function getProperties()
+    /**
+     * @return array{line: int, match: string, property: string}[]
+     */
+    public function getProperties():array
     {
-        $file_path = self::filepath;
         $pattern = '/private.*\$(.*)[,|;]/';
-        $file = new SplFileObject($file_path);
         $matches = [];
 
-        while (!$file->eof()) {
-            $line = $file->fgets();
-            $line_number = $file->key() + 1;
+        while (!$this->file->eof()) {
+            $line = $this->file->fgets();
+            $line_number = $this->file->key() + 1;
 
             if (preg_match($pattern, $line, $m)) {
                 $matches[] = [
@@ -72,10 +83,10 @@ class EntityParser
         return $matches;
     }
 
-    private function getType($attribute_text)
+    private function getType($attribute_text): ?DbType
     {
         preg_match($this->relation_pattern, $attribute_text, $relation_match);
-        if (null!==$relation_match[0]) { return 'relation'; }
+        if (null!==$relation_match[0]) { return DbType::RELATION; }
 
 
         $pattern = '/type:\s(.*?)[,|\)]/';
@@ -89,13 +100,19 @@ class EntityParser
     {
         preg_match($this->nullable_pattern, $attributre_text, $matched);
         if (null===$matched) { return null; }
+        if (null===$matched[1]) { return null; }
 
         return  $matched[1];
 
     }
 
-    private function getLength(string $attribute_text)
+    private function getLength(string $attribute_text): ?int
     {
+        preg_match($this->length_pattern, $attribute_text, $matched);
+        if (null===$matched) { return null; }
+        if (null===$matched[1]) { return null; }
+
+        return  (int) $matched[1];
     
     }
 
@@ -123,10 +140,12 @@ class EntityParser
             $attributes = $set['attrs'];
             $types = array_map(fn ($element) =>$this->getType($element['match']), $attributes);
             $type = count($types) === 0 ? null : $types[0];
+            $lengths = array_map(fn ($element) =>$this->getLength($element['match']), $attributes);
+            $length= count($lengths) === 0 ? null : $lengths[0];
             $nullables = array_map(fn($element)=>$this->getNullable($element['match']), $attributes);
             $nullable = count($nullables) === 0 ? null : $nullables[0];
             $column_name = $this->getColumnName($set);
-            $result[] = new DbColumnDto(field: $column_name, type: $type, nullable:$nullable);
+            $result[] = new DbColumnDto(field: $column_name, type: $type, nullable:$nullable, length: $length);
         }
 
 
@@ -145,10 +164,10 @@ class EntityParser
     private function typeMap($row_type)
     {
         return match ($row_type) {
-            'Types::BIGINT' => 'bigint',
-            'Types::STRING' => 'varchar',
-            'Types::INTEGER' => 'int',
-            'Types::BOOLEAN' => 'bool',
+            'Types::BIGINT' => DbType::BIGINT,
+            'Types::STRING' => DbType::VARCHAR,
+            'Types::INTEGER' => DbType::INT,
+            'Types::BOOLEAN' => DbType::TINY_INT,
 
         };
     }
@@ -237,15 +256,28 @@ class EntityParser
     public function getDefaultColumn()
     {
         return [
-            new DbColumnDto(field: 'created_at', type: 'datetime', nullable: false, key: null, default: null),
-            new DbColumnDto(field: 'updated_at', type: 'datetime', nullable: false, key: null, default: null)
+            new DbColumnDto(field: 'created_at', type: DbType::DATETIME, nullable: false, key: null, default: null),
+            new DbColumnDto(field: 'updated_at', type: DbType::DATETIME, nullable: false, key: null, default: null)
         ];
     }
+}
+
+enum DbType
+{
+    case VARCHAR;
+    case INT;
+    case BIGINT;
+    case TINY_INT;
+    case DATETIME;
+    case TEXT;
+    case RELATION;
 }
 
 // mysql management class
 class DbConnector
 {
+    private string $length_pattern = '/varchar\((.*)\)/';
+
     private $mysqli;
 
     public function __construct()
@@ -261,13 +293,48 @@ class DbConnector
         foreach ($result as $row) {
             $typed[] = new DbColumnDto(
                 field: $row[0],
-                type: $row[1],
+                type: $this->getType($row[1]),
                 nullable: $row[2] === "YES",
+                length: $this->getLength($row[1]),
                 key: $row[3],
                 default: $row[4] === "NULL" ? null : $row[4]
             );
         }
         return $typed;
+    }
+
+    private function getLength(string $column_type): ?int
+    {
+        preg_match($this->length_pattern, $column_type, $matches);
+        if (null===$matches) { return null; }
+        if (null===$matches[1]) { return null; }
+
+        return (int) $matches[1];
+
+        
+    }
+
+    private function getType(string $raw_type_string): ?DbType
+    {
+        switch($raw_type_string) {
+            case strpos($raw_type_string, 'varchar'):
+                return DbType::VARCHAR;
+
+            case 'bigint':
+                return DbType::BIGINT;
+
+            case 'int':
+                return DbType::INT;
+
+            case 'tiny_int':
+                return DbType::TINY_INT;
+
+            case 'datetime':
+                return DbType::DATETIME;
+        }
+
+        return null;
+        
     }
     public function getColumnName(string $table_name)
     {
@@ -285,8 +352,9 @@ class DbColumnDto
 {
     public function __construct(
         public ?string $field = null,
-        public ?string $type = null,
+        public ?DbType $type = null,
         public ?string $nullable = null,
+        public ?int $length = null,
         public ?string $key = null,
         public ?string $default = null,
     ) {
@@ -311,11 +379,14 @@ class Shougo
 }
 
 
-$c = new EntityParser();
-$result = $c->getDbColumn();
-var_dump($result);
-// $db_connector = new DbConnector();
-// $shougo = new Shougo($db_connector, $c);
-// $res = $shougo->getDiffForColumnName();
-//
-// var_dump($res);
+//$c = new EntityParser('test.php');
+//$db=new DbConnector();
+////$result = $c->getDbColumn();
+//// var_dump($result);
+//$res = $db->getDesc($c->getTableName());
+//var_dump($res);
+//// $db_connector = new DbConnector();
+//// $shougo = new Shougo($db_connector, $c);
+//// $res = $shougo->getDiffForColumnName();
+////
+//// var_dump($res);
