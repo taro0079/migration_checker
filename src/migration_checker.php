@@ -1,6 +1,8 @@
 <?php
 
-//require '../vendor/autoload.php';
+/**
+ * 他のエンティティと関連付いているカラムについては型判定をしない。なぜなら、型情報が他の関連付いているエンティティに定義されており実装が大変だから。
+ */
 class EntityParser
 {
     //    private $file;
@@ -26,7 +28,7 @@ class EntityParser
             throw new Exception('file not found');
         }
 
-        $this->file_lines = file($this->file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $this->file_lines = file($file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
 
     }
@@ -282,8 +284,21 @@ class EntityParser
     public function getDefaultColumn(): array
     {
         return [
-            new DbColumnDto(field: 'created_at', type: DbType::DATETIME, nullable: false, key: null, default: null),
-            new DbColumnDto(field: 'updated_at', type: DbType::DATETIME, nullable: false, key: null, default: null)
+            new DbColumnDto(
+                field: 'created_at',
+                type: DbType::DATETIME,
+                nullable: false,
+                key: null,
+                default: null
+            ),
+
+            new DbColumnDto(
+                field: 'updated_at',
+                type: DbType::DATETIME,
+                nullable: false,
+                key: null,
+                default: null
+            )
         ];
     }
 }
@@ -306,9 +321,9 @@ class DbConnector
 
     private $mysqli;
 
-    public function __construct()
+    public function __construct(mysqli $mysqli)
     {
-        $this->mysqli = new mysqli('127.0.0.1', 'root', '!ChangeMe!', 'app_db');
+        $this->mysqli = $mysqli;
     }
 
     public function getDesc($table_name)
@@ -384,7 +399,7 @@ class DbColumnDto
     public function __construct(
         public ?string $field = null,
         public ?DbType $type = null,
-        public ?string $nullable = null,
+        public ?bool $nullable = null,
         public ?int    $length = null,
         public ?string $key = null,
         public ?string $default = null,
@@ -394,7 +409,10 @@ class DbColumnDto
 
 }
 
-class Shougo
+/**
+ * EntityParserのほうでDbType::RELATIONとなっているカラムについては判定対象に含めない
+ */
+class Verification
 {
     private DbConnector $dbConnector;
 
@@ -407,10 +425,29 @@ class Shougo
         $this->dbConnector = $dbConnector;
         $this->parser = $parser;
     }
+    public function columnCheck(): bool
+    {
+        $entity_columns = $this->parser->getDbColumn();
+        $db_columns = $this->dbConnector->getDesc($this->parser->getTableName());
+        $result = true;
+        foreach ($entity_columns as $entity_column) {
+            if (!$this->isColumnExist($entity_column, $db_columns)) {
+                $result = false;
+            }
+        }
+        return $result;
+    }
+
+    public function isColumnExist(DbColumnDto $entity_column, array $db_columns): bool
+    {
+        $column_names = array_map(fn (DbColumnDto $dto) => $dto->field, $db_columns);
+        return in_array($entity_column->field, $column_names);
+    }
+
 
 }
 
-//
-//$c = new EntityParser('../test.php');
-//$result = $c->getDbColumn();
-//var_dump($result);
+function main(): void
+{
+
+}
