@@ -23,7 +23,6 @@ class FileReader
 class EntityParser
 {
     //    private $file;
-    private string $file_path           = '../test.php';
     private string $name_pattern        = '/name: \'(.*?)\'/';
     private string $column_pattern      = '/#\[ORM.*(?:Column|JoinColumn)(.*)/';
     private string $join_column_pattern = '/#\[ORM\\\\JoinColumn\(name:\s[\'"](.*?)[\'"],/';
@@ -392,7 +391,7 @@ class DbConnector
         if (null === $matches) {
             return null;
         }
-        if (null === $matches[1]) {
+        if (!isset($matches[1])) {
             return null;
         }
 
@@ -446,6 +445,44 @@ class DbColumnDto
     }
 }
 
+enum Where
+{
+    case ENTITY;
+    case DB;
+
+    public function text(): string
+    {
+        return match ($this) {
+            self::ENTITY => 'Entity',
+            self::DB     => 'DataBase',
+        };
+    }
+}
+
+class ErrorDto
+{
+    public function __construct(
+        public string $column,
+        public Where $where
+    ) {
+    }
+}
+
+class ErrorMessage
+{
+    public function __construct(
+        public string $message
+    ) {
+    }
+
+    public static function fromError(ErrorDto $error): self
+    {
+        $message = 'Column name: ' . $error->column . ' is only found in ' . $error->where->text();
+
+        return new self($message);
+    }
+}
+
 /**
  * EntityParserのほうでDbType::RELATIONとなっているカラムについては判定対象に含めない
  */
@@ -467,10 +504,13 @@ class Verification
     {
         $entity_columns = $this->parser->getDbColumn();
         $db_columns     = $this->dbConnector->getDesc($this->parser->getTableName());
-        $result         = true;
         $errors         = $this->columnNameCheck($entity_columns, $db_columns);
+        $error_messages = [];
+        foreach ($errors as $error) {
+            $error_messages[] = ErrorMessage::fromError($error);
+        }
 
-        return $errors;
+        return $error_messages;
     }
 
     private function columnNameCheck(array $entity_columns, array $db_columns): array
@@ -482,17 +522,11 @@ class Verification
 
         $error_dtos = [];
         foreach ($unique_in_entity as $column) {
-            $error_dtos[] = [
-                'column' => $column,
-                'where' => 'entity',
-            ];
+            $error_dtos[] = new ErrorDto(column: $column, where: Where::ENTITY);
         }
 
         foreach ($unique_in_db as $column) {
-            $error_dtos[] = [
-                'column' => $column,
-                'where' => 'db',
-            ];
+            $error_dtos[] = new ErrorDto(column: $column, where: Where::DB);
         }
 
         return $error_dtos;
@@ -502,3 +536,9 @@ class Verification
 function main(): void
 {
 }
+// $mysqli       = new mysqli('127.0.0.1', 'root', '!ChangeMe!', 'app_db');
+// $fileReader   = new FileReader('./test.php');
+// $entityParser = new EntityParser(fileReader: $fileReader);
+// $dbConnector  = new DbConnector($mysqli);
+// $verification = new Verification($dbConnector, $entityParser);
+// $verification->columnCheck();
