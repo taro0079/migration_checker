@@ -3,11 +3,11 @@
 
 use PHPUnit\Framework\TestCase;
 
-require '../src/migration_checker.php';
+require './src/migration_checker.php';
 
 class EntityParserTest extends TestCase
 {
-    private string $file_path = '../test.php';
+    private string $file_path = './test.php';
 
     public function testGetTableName()
     {
@@ -62,5 +62,11 @@ class EntityParserTest extends TestCase
         ];
         $this->assertCount(23, $result_column_names);
         $this->assertSame($expected_column_names, $result_column_names);
+
+        $customerId = array_filter($result, fn (DbColumnDto $column) => $column->field === 'customer_id');
+        $tagetResult = count($customerId) > 0 ? array_values($customerId)[0] : null;
+        $this->assertSame($tagetResult->field, 'customer_id');
+        $this->assertSame(DbType::RELATION, $tagetResult->type);
+        $this->assertNull($tagetResult->length);
     }
 }
