@@ -149,10 +149,10 @@ class EntityParser
 
     public function getColumnName($set)
     {
-        $attrubites          = $set['attrs'];
+        $attributes          = $set['attrs'];
         $column_name_pattern = $this->name_pattern;
-        foreach ($attrubites as $attrubite) {
-            preg_match($column_name_pattern, $attrubite['match'], $matches);
+        foreach ($attributes as $attribute) {
+            preg_match($column_name_pattern, $attribute['match'], $matches);
             if (!isset($matches[1])) {
                 continue;
             }
