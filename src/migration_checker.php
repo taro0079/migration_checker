@@ -499,12 +499,21 @@ class Verification
 
     private EntityParser $parser;
 
+    /**
+     * @var Checker[]
+     */
+    private array $checkers;
+
     public function __construct(
         DbConnector $dbConnector,
         EntityParser $parser
     ) {
         $this->dbConnector = $dbConnector;
         $this->parser      = $parser;
+        $this->checkers    = [
+            new ColumnNameChecker(),
+            new ColumnTypeChecker(),
+        ];
     }
 
     public function columnCheck(): array
@@ -512,40 +521,35 @@ class Verification
         $errors         = [];
         $entity_columns = $this->parser->getDbColumn();
         $db_columns     = $this->dbConnector->getDesc($this->parser->getTableName());
-        $errors         = [...$errors, ...$this->columnNameCheck($entity_columns, $db_columns)];
-        $errors         = [...$errors, ...$this->columnTypeCheck($entity_columns, $db_columns)];
-        // var_dump($errors);
+
+        return $this->getErrorMessages($entity_columns, $db_columns);
+    }
+
+    private function getErrorMessages(array $entity_columns, array $db_columns): array
+    {
         $error_messages = [];
-        foreach ($errors as $error) {
-            $error_messages[] = ErrorMessage::fromError($error);
+
+        foreach ($this->checkers as $checker) {
+            $error_messages = [...$error_messages, ...$checker->createErrorMessage($checker->columnCheck($entity_columns, $db_columns))];
         }
 
         return $error_messages;
     }
+}
 
-    private function columnTypeCheck(array $entity_columns, array $db_columns):array
-    {
-        $error_dtos = [];
-        $check_list = array_filter($entity_columns, fn ($element) => $element->type !== DbType::RELATION); // 他のエンティティと関連があるカラムは型判定をしない
-        foreach ($check_list as $entity_column) {
-            $entity_column_name = $entity_column->field;
-            $db_column          = array_filter($db_columns, fn ($element) => $element->field === $entity_column_name);
-            if (count($db_column) === 0) {
-                continue;
-            }
-            $db_column = array_values($db_column)[0];
-            if ($entity_column->type !== $db_column->type) {
-                $error_dtos[] = new ErrorDto(column: $entity_column_name, where: Where::ENTITY, checkType: CheckType::TYPE);
-            }
-        }
+interface Checker
+{
+    public function columnCheck(array $entity_columns, array $database_columns): array;
 
-        return $error_dtos;
-    }
+    public function createErrorMessage(array $error_dtos): array;
+}
 
-    private function columnNameCheck(array $entity_columns, array $db_columns): array
+class ColumnNameChecker implements Checker
+{
+    public function columnCheck(array $entity_columns, array $database_columns): array
     {
         $entity_column_names = array_map(fn ($element) => $element->field, $entity_columns);
-        $db_column_names     = array_map(fn ($element) => $element->field, $db_columns);
+        $db_column_names     = array_map(fn ($element) => $element->field, $database_columns);
         $unique_in_entity    = array_diff($entity_column_names, $db_column_names);
         $unique_in_db        = array_diff($db_column_names, $entity_column_names);
 
@@ -559,6 +563,50 @@ class Verification
         }
 
         return $error_dtos;
+    }
+
+    public function createErrorMessage(array $error_dtos): array
+    {
+        $error_messages = [];
+        foreach ($error_dtos as $dto) {
+            $template         = 'Column name: %s is only found in %s';
+            $error_messages[] = sprintf($template, $dto->column, $dto->where->text());
+        }
+
+        return $error_messages;
+    }
+}
+
+class ColumnTypeChecker implements Checker
+{
+    public function columnCheck(array $entity_columns, array $database_columns): array
+    {
+        $error_dtos = [];
+        $check_list = array_filter($entity_columns, fn ($element) => $element->type !== DbType::RELATION); // 他のエンティティと関連があるカラムは型判定をしない
+        foreach ($check_list as $entity_column) {
+            $entity_column_name = $entity_column->field;
+            $db_column          = array_filter($database_columns, fn ($element) => $element->field === $entity_column_name);
+            if (count($db_column) === 0) {
+                continue;
+            }
+            $db_column = array_values($db_column)[0];
+            if ($entity_column->type !== $db_column->type) {
+                $error_dtos[] = new ErrorDto(column: $entity_column_name, where: Where::ENTITY, checkType: CheckType::TYPE);
+            }
+        }
+
+        return $error_dtos;
+    }
+
+    public function createErrorMessage(array $error_dtos): array
+    {
+        $error_messages = [];
+        foreach ($error_dtos as $dto) {
+            $template         = 'Type of column defined in entity class is different from database. Column name: %s';
+            $error_messages[] = sprintf($template, $dto->column, $dto->where->text());
+        }
+
+        return $error_messages;
     }
 }
 
