@@ -10,7 +10,6 @@ require './src/migration_checker.php';
 
 class VerificationTest extends TestCase
 {
-    private mysqli&MockObject $mysqli;
     private FileReader&MockObject $fileReaderMock;
 
     public static function dataProvide(): array
@@ -62,11 +61,29 @@ class VerificationTest extends TestCase
             '#[ORM\Column(type: Types::INTEGER, nullable: false, options: ["comment" => "請求金額"])]',
             'private int $paymentInvoiceAmount;',
         ];
+        $typeWrongEntity = [
+            '#[ORM\Entity]',
+            '#[ORM\Table(name: "trn_order", options: ["comment" => "受注"])]',
+            'class Order',
+            '{',
+            '#[ORM\Column(type: Types::BIGINT, nullable: false, options: ["comment" => "請求ID"])]',
+            '#[ORM\Id,',
+            '   ORM\GeneratedValue()]',
+            'private int $id;',
+            '#[ORM\ManyToOne(targetEntity: Customer::class, inversedBy: "paymentInvoices")]',
+            '#[ORM\JoinColumn(name: "customer_id", referencedColumnName: "id", nullable: true, options: ["comment" => "顧客ID"])]',
+            'private ?Customer $customer;',
+            '#[ORM\Column(type: Types::INTEGER, nullable: false, options: ["comment" => "請求金額"])]',
+            'private int $paymentInvoiceAmount;',
+            '#[ORM\Column(type: Types::INTEGER, nullable: false, enumType: TypeDepositStatus::class, options: ["comment" => "入金ステータス区分"])]',
+            'private TypeDepositStatus $typeDepositStatus;',
+        ];
 
         return [
             [$correctDbColumns, $collectEntity, 0],
             [$wrongDbColumns, $collectEntity, 1],
             [$correctDbColumns, $wrongEntity, 1],
+            [$correctDbColumns, $typeWrongEntity, 1],
         ];
     }
 
@@ -75,27 +92,34 @@ class VerificationTest extends TestCase
      */
     public function testColumnCheck(array $dbColumn, array $entityColumn, int $arrayCount): void
     {
-        $this->mysqli = $this->createMock(mysqli::class);
         /**
-         * @var mysqli_result&MockObject
+         * @var mysqli&MockObject $mysqli
+         */
+        $mysqli = $this->createMock(mysqli::class);
+
+        /**
+         * @var mysqli_result&MockObject $msqli_result
          */
         $msqli_result = $this->createMock(mysqli_result::class);
-        $this->mysqli->method('query')
+        $mysqli->method('query')
 
             ->willReturn($msqli_result);
         $msqli_result->method('fetch_all')
             ->willReturn($dbColumn);
-        $this->fileReaderMock = $this->getMockBuilder(FileReader::class)
+        /**
+         * @var FileReader&MockObject $fileReaderMock
+         */
+        $fileReaderMock = $this->getMockBuilder(FileReader::class)
             ->setConstructorArgs(['dummy'])
             ->onlyMethods(['readFile'])
             ->getMock();
 
         // readFileメソッドが呼び出されたときに返す値を定義
-        $this->fileReaderMock->method('readFile')->willReturn($entityColumn);
-        $entityParser = new EntityParser($this->fileReaderMock);
+        $fileReaderMock->method('readFile')->willReturn($entityColumn);
+        $entityParser = new EntityParser($fileReaderMock);
 
         // readFileメソッドが呼び出されたときに返す値を定義
-        $dbConnector  = new DbConnector($this->mysqli);
+        $dbConnector  = new DbConnector($mysqli);
         $verification = new Verification($dbConnector, $entityParser);
         $result       = $verification->columnCheck();
         $this->assertCount($arrayCount, $result);

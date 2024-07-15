@@ -463,9 +463,16 @@ class ErrorDto
 {
     public function __construct(
         public string $column,
-        public Where $where
+        public Where $where,
+        public CheckType $checkType
     ) {
     }
+}
+
+enum CheckType
+{
+    case COLUMN;
+    case TYPE;
 }
 
 class ErrorMessage
@@ -502,15 +509,37 @@ class Verification
 
     public function columnCheck(): array
     {
+        $errors         = [];
         $entity_columns = $this->parser->getDbColumn();
         $db_columns     = $this->dbConnector->getDesc($this->parser->getTableName());
-        $errors         = $this->columnNameCheck($entity_columns, $db_columns);
+        $errors         = [...$errors, ...$this->columnNameCheck($entity_columns, $db_columns)];
+        $errors         = [...$errors, ...$this->columnTypeCheck($entity_columns, $db_columns)];
+        // var_dump($errors);
         $error_messages = [];
         foreach ($errors as $error) {
             $error_messages[] = ErrorMessage::fromError($error);
         }
 
         return $error_messages;
+    }
+
+    private function columnTypeCheck(array $entity_columns, array $db_columns):array
+    {
+        $error_dtos = [];
+        $check_list = array_filter($entity_columns, fn ($element) => $element->type !== DbType::RELATION); // 他のエンティティと関連があるカラムは型判定をしない
+        foreach ($check_list as $entity_column) {
+            $entity_column_name = $entity_column->field;
+            $db_column          = array_filter($db_columns, fn ($element) => $element->field === $entity_column_name);
+            if (count($db_column) === 0) {
+                continue;
+            }
+            $db_column = array_values($db_column)[0];
+            if ($entity_column->type !== $db_column->type) {
+                $error_dtos[] = new ErrorDto(column: $entity_column_name, where: Where::ENTITY, checkType: CheckType::TYPE);
+            }
+        }
+
+        return $error_dtos;
     }
 
     private function columnNameCheck(array $entity_columns, array $db_columns): array
@@ -522,23 +551,40 @@ class Verification
 
         $error_dtos = [];
         foreach ($unique_in_entity as $column) {
-            $error_dtos[] = new ErrorDto(column: $column, where: Where::ENTITY);
+            $error_dtos[] = new ErrorDto(column: $column, where: Where::ENTITY, checkType: CheckType::COLUMN);
         }
 
         foreach ($unique_in_db as $column) {
-            $error_dtos[] = new ErrorDto(column: $column, where: Where::DB);
+            $error_dtos[] = new ErrorDto(column: $column, where: Where::DB, checkType: CheckType::COLUMN);
         }
 
         return $error_dtos;
     }
 }
 
+function getFilePathsFrom(array $argv): array
+{
+    $argv       = array_slice($argv, 1);
+    $file_paths = [];
+
+    foreach ($argv as $arg) {
+        if (!file_exists($arg)) {
+            throw new Exception('file not found');
+        }
+        $file_paths[] = $arg;
+    }
+
+    return $file_paths;
+}
+
 function main(): void
 {
+    global $argv;
+    try {
+        $file_paths = getFilePathsFrom($argv);
+    } catch(Exception $e) {
+        fwrite(STDERR, $e->getMessage());
+    }
 }
-// $mysqli       = new mysqli('127.0.0.1', 'root', '!ChangeMe!', 'app_db');
-// $fileReader   = new FileReader('./test.php');
-// $entityParser = new EntityParser(fileReader: $fileReader);
-// $dbConnector  = new DbConnector($mysqli);
-// $verification = new Verification($dbConnector, $entityParser);
-// $verification->columnCheck();
+
+main();
