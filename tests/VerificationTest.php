@@ -2,11 +2,15 @@
 
 declare(strict_types=1);
 
+use MigrationChecker\DbConnector;
+use MigrationChecker\EntityParser;
+use MigrationChecker\FileReader;
+use MigrationChecker\Verification;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
-require './src/migration_checker.php';
+// require './src/migration_checker.php';
 
 class VerificationTest extends TestCase
 {

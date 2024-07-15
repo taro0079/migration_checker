@@ -3,9 +3,21 @@
         "phpunit/phpunit": "^10",
         "friendsofphp/php-cs-fixer": "^3.59"
     },
-    "autoload": {
-        "psr-4": {
-            "App\\": "src/"
+    "authors": [
+        {
+            "name": "Taro Morita",
+            "email": "morita0079@gmail.com",
+            "role": "lead"
         }
+    ],
+    "autoload": {
+        "classmap": [
+            "src/"
+        ]
+    },
+    "autoload-dev": {
+        "classmap": [
+            "tests/"
+        ]
     }
 }
