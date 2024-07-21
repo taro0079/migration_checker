@@ -1,5 +1,8 @@
 <?php
 
+declare(strict_types=1);
+require_once __DIR__ . '/vendor/autoload.php';
+
 use MigrationChecker\DbConnector;
 use MigrationChecker\EntityParser;
 use MigrationChecker\FileReader;
@@ -32,6 +35,7 @@ function main(): void
             $database_connector = new DbConnector($mysqli);
             $verify             = new Verification($database_connector, $entity_parser);
             $errorMessages      = $verify->columnCheck();
+            var_dump($errorMessages);
         }
     } catch(Exception $e) {
         fwrite(STDERR, $e->getMessage());

@@ -37,7 +37,9 @@ class Verification
     {
         $errors         = [];
         $entity_columns = $this->parser->getDbColumn();
-        $db_columns     = $this->dbConnector->getDesc($this->parser->getTableName());
+        // var_dump($entity_columns);
+        $db_columns = $this->dbConnector->getDesc($this->parser->getTableName());
+        // var_dump($db_columns);
 
         return $this->getErrorMessages($entity_columns, $db_columns);
     }

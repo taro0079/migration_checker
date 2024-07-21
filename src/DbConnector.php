@@ -52,8 +52,10 @@ class DbConnector
 
     private function getType(string $raw_type_string): ?DbType
     {
+        var_dump($raw_type_string);
         switch ($raw_type_string) {
-            case strpos($raw_type_string, 'varchar'):
+            case false !== strpos($raw_type_string, 'varchar'):
+
                 return DbType::VARCHAR;
 
             case 'bigint':
@@ -62,11 +64,17 @@ class DbConnector
             case 'int':
                 return DbType::INT;
 
-            case 'tiny_int':
+            case false !== strpos($raw_type_string, 'tinyint'):
                 return DbType::TINY_INT;
 
             case 'datetime':
                 return DbType::DATETIME;
+
+            case 'longtext':
+                return DbType::TEXT;
+
+            case 'date':
+                return DbType::DATE;
         }
 
         return null;

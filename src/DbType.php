@@ -11,6 +11,7 @@ enum DbType
     case BIGINT;
     case TINY_INT;
     case DATETIME;
+    case DATE;
     case TEXT;
     case RELATION;
 }

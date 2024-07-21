@@ -15,7 +15,7 @@ class EntityParser
     private string $join_column_pattern = '/#\[ORM\\\\JoinColumn\(name:\s[\'"](.*?)[\'"],/';
 
     private string $attribute_pattern = '/#\[ORM.*(?:Column|JoinColumn|OneToMany|OneToOne|ManyToOne).*/';
-    private string $table_pattern     = '/#\[ORM\\\\Table\(name:\s[\'"](.*?)[\'"],/';
+    private string $table_pattern     = '/#\[ORM\\\\Table\(name:\s[\'"](.*?)[\'"][,\)]/';
 
     private string $relation_pattern = '/#\[ORM\\\\(?:OneToMany|ManyToOne|OneToOne|JoinColumn).*/';
 
@@ -78,7 +78,7 @@ class EntityParser
      */
     public function getProperties(): array
     {
-        $pattern = '/private.*\$(.*)[,|;]/';
+        $pattern = '/private.*\$(.*?)[,|;|\s=]/';
         $matches = [];
 
         foreach ($this->file_lines as $line_number => $line) {
@@ -197,7 +197,15 @@ class EntityParser
             'Types::BIGINT' => DbType::BIGINT,
             'Types::STRING' => DbType::VARCHAR,
             'Types::INTEGER' => DbType::INT,
+            'Types::TEXT' => DbType::TEXT,
+            'Types::SIMPLE_ARRAY' => DbType::TEXT,
+            'Types::DATETIME_MUTABLE' => DbType::DATETIME,
+            'Types::DATE_MUTABLE' => DbType::DATE,
             'Types::BOOLEAN' => DbType::TINY_INT,
+            '\'bigint\'' => DbType::BIGINT,
+            '\'integer\'' => DbType::INT,
+            '\'string\'' => DbType::TEXT,
+            '\'boolean\'' => DbType::TINY_INT
         };
     }
 
