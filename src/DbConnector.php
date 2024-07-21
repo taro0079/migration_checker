@@ -52,7 +52,6 @@ class DbConnector
 
     private function getType(string $raw_type_string): ?DbType
     {
-        var_dump($raw_type_string);
         switch ($raw_type_string) {
             case false !== strpos($raw_type_string, 'varchar'):
 

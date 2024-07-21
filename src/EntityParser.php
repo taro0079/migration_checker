@@ -204,7 +204,7 @@ class EntityParser
             'Types::BOOLEAN' => DbType::TINY_INT,
             '\'bigint\'' => DbType::BIGINT,
             '\'integer\'' => DbType::INT,
-            '\'string\'' => DbType::TEXT,
+            '\'string\'' => DbType::VARCHAR,
             '\'boolean\'' => DbType::TINY_INT
         };
     }
